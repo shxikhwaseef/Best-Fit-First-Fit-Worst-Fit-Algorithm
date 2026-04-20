@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memory Allocator Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #0d0f14;
+    --surface:  #13161e;
+    --surface2: #1a1e28;
+    --border:   #272b38;
+    --border2:  #353a4d;
+    --text:     #c8cfe0;
+    --muted:    #5a6178;
+    --accent:   #5b8dee;
+    --accent2:  #3dd68c;
+    --warn:     #f0814a;
+    --danger:   #e05c6a;
+    --glow:     rgba(91,141,238,0.15);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  /* Subtle grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(91,141,238,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(91,141,238,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrapper {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 24px 48px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+    animation: fadeDown 0.5s ease both;
+  }
+  .header-left h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
+  }
+  .header-left p {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+  .badge {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    animation: fadeUp 0.5s ease both;
+  }
+  .card:nth-child(2) { animation-delay: 0.05s; }
+  .card:nth-child(3) { animation-delay: 0.1s; }
+  .card:nth-child(4) { animation-delay: 0.15s; }
+  .card:nth-child(5) { animation-delay: 0.2s; }
+  .card:nth-child(6) { animation-delay: 0.25s; }
+
+  .section-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .algo-group {
+    display: flex;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .algo-btn {
+    background: transparent;
+    color: var(--muted);
+    border: none;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s;
+    border-right: 1px solid var(--border);
+  }
+  .algo-btn:last-child { border-right: none; }
+  .algo-btn:hover { color: var(--text); background: var(--border); }
+  .algo-btn.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 16px rgba(91,141,238,0.3);
+  }
+
+  .spacer { flex: 1; }
+
+  .speed-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 80px; height: 3px;
+    background: var(--border2);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(91,141,238,0.5);
+  }
+
+  .action-btn {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border2);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .action-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--glow);
+  }
+  .action-btn.primary {
+    background: linear-gradient(135deg, #4a7de0, #5b8dee);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 2px 12px rgba(91,141,238,0.3);
+  }
+  .action-btn.primary:hover {
+    box-shadow: 0 4px 20px rgba(91,141,238,0.5);
+    transform: translateY(-1px);
+  }
+
+  /* Desc */
+  .desc-text {
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 12px 16px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    transition: all 0.3s;
+  }
+
+  /* Queue */
+  .queue-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .queue-chip {
+    border: 1.5px solid var(--border2);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--text);
+    transition: all 0.3s;
+    background: var(--surface2);
+  }
+  .queue-chip.done {
+    opacity: 0.25;
+    text-decoration: line-through;
+    color: var(--muted);
+  }
+  .queue-chip.current {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(91,141,238,0.1);
+    box-shadow: 0 0 10px rgba(91,141,238,0.2);
+  }
+
+  /* Memory blocks */
+  .memory-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 6px;
+  }
+  .mem-block {
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    height: 72px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  .mem-block::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.35s;
+    background: radial-gradient(circle at 50% 0%, rgba(91,141,238,0.15), transparent 70%);
+  }
+  .mem-block.allocated {
+    border-color: var(--accent2);
+    color: var(--accent2);
+    background: rgba(61,214,140,0.06);
+    box-shadow: 0 0 16px rgba(61,214,140,0.12);
+  }
+  .mem-block.allocated::before { opacity: 1; background: radial-gradient(circle at 50% 0%, rgba(61,214,140,0.12), transparent 70%); }
+  .mem-block.highlighted {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(91,141,238,0.08);
+    box-shadow: 0 0 16px rgba(91,141,238,0.2);
+    transform: translateY(-2px);
+  }
+  .mem-block .size-label { font-size: 13px; font-weight: 700; color: inherit; }
+  .mem-block .alloc-label { font-size: 9px; opacity: 0.8; }
+  .mem-block .waste-label { font-size: 9px; color: var(--warn); }
+
+  /* Stats */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+  }
+  .stat-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 12px;
+    text-align: center;
+    transition: border-color 0.3s;
+  }
+  .stat-card:hover { border-color: var(--border2); }
+  .stat-val {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-lbl {
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  #statUsed .stat-val { color: var(--accent); }
+  #statFree .stat-val { color: var(--accent2); }
+  #statWaste .stat-val { color: var(--warn); }
+
+  /* Log */
+  .log-area {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    min-height: 80px;
+    max-height: 160px;
+    overflow-y: auto;
+    font-size: 11px;
+    line-height: 1.8;
+  }
+  .log-area::-webkit-scrollbar { width: 4px; }
+  .log-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .log-entry { color: var(--muted); }
+  .log-entry.ok { color: var(--accent2); }
+  .log-entry.fail { color: var(--danger); }
+  .log-entry.info { color: var(--accent); }
+
+  /* Animations */
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(91,141,238,0.4); }
+    50%       { box-shadow: 0 0 0 6px rgba(91,141,238,0); }
+  }
+  .mem-block.highlighted { animation: pulse 1s infinite; }
+
+  @media (max-width: 600px) {
+    .memory-grid { grid-template-columns: repeat(4, 1fr); }
+    .stats-grid { grid-template-columns: repeat(3, 1fr); }
+    .algo-btn { padding: 7px 10px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>Memory Allocator</h1>
+      <p>Dynamic Partition Simulation</p>
+    </div>
+    <span class="badge">32 Units</span>
+  </div>
+
+  <!-- Controls Card -->
+  <div class="card">
+    <div class="section-label">Algorithm & Controls</div>
+    <div class="toolbar">
+      <div class="algo-group">
+        <button class="algo-btn active" id="btnFirst" onclick="setAlgo('first')">First Fit</button>
+        <button class="algo-btn" id="btnBest" onclick="setAlgo('best')">Best Fit</button>
+        <button class="algo-btn" id="btnWorst" onclick="setAlgo('worst')">Worst Fit</button>
+      </div>
+      <div class="speed-wrap">
+        Speed <input type="range" id="speedSlider" min="1" max="10" value="5">
+      </div>
+      <div class="spacer"></div>
+      <button class="action-btn primary" onclick="allocateAll()">Allocate All ↵</button>
+      <button class="action-btn" onclick="stepOne()">Step →</button>
+      <button class="action-btn" onclick="resetAll()">Reset</button>
+    </div>
+  </div>
+
+  <!-- Description Card -->
+  <div class="card" style="padding: 14px 20px;">
+    <div class="desc-text" id="descBox">First Fit – picks the first free block that fits. Stops scanning early and is fast for general-purpose allocation.</div>
+  </div>
+
+  <!-- Queue Card -->
+  <div class="card">
+    <div class="section-label">Request Queue</div>
+    <div class="queue-row" id="queueItems"></div>
+  </div>
+
+  <!-- Memory Card -->
+  <div class="card">
+    <div class="section-label">Memory Layout</div>
+    <div class="memory-grid" id="memoryRow"></div>
+  </div>
+
+  <!-- Stats Card -->
+  <div class="card">
+    <div class="section-label">Statistics</div>
+    <div class="stats-grid">
+      <div class="stat-card" id="statUsed"><div class="stat-val">0</div><div class="stat-lbl">Used</div></div>
+      <div class="stat-card" id="statFree"><div class="stat-val">32</div><div class="stat-lbl">Free</div></div>
+      <div class="stat-card" id="statBlocks"><div class="stat-val">8</div><div class="stat-lbl">Free Blocks</div></div>
+      <div class="stat-card" id="statWaste"><div class="stat-val">0</div><div class="stat-lbl">Waste</div></div>
+      <div class="stat-card" id="statAllocated"><div class="stat-val">0</div><div class="stat-lbl">Allocated</div></div>
+    </div>
+  </div>
+
+  <!-- Log Card -->
+  <div class="card">
+    <div class="section-label">Allocation Log</div>
+    <div class="log-area" id="logBox">
+      <div class="log-entry info">— Simulator ready. Select an algorithm and press Allocate All or Step.</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const INIT_BLOCKS = [4,2,6,3,5,4,3,5];
+const QUEUE = [3,5,2,4,1,6,3,2,4,5];
+const DESCS = {
+  first: 'First Fit – picks the first free block that fits. Stops scanning early and is fast for general-purpose allocation.',
+  best:  'Best Fit – picks the smallest block that still fits the request. Minimizes internal fragmentation and wasted space.',
+  worst: 'Worst Fit – picks the largest available block. Maximizes leftover space, hoping future requests can still be satisfied.'
+};
+
+let algo = 'first';
+let blocks = [];
+let queueIdx = 0;
+let allocating = false;
+
+function initBlocks() {
+  blocks = INIT_BLOCKS.map((sz, i) => ({ size: sz, id: i, allocated: null, waste: 0 }));
+}
+
+function setAlgo(a) {
+  algo = a;
+  ['first','best','worst'].forEach(x => {
+    document.getElementById('btn' + x.charAt(0).toUpperCase() + x.slice(1)).classList.toggle('active', x === a);
+  });
+  document.getElementById('descBox').textContent = DESCS[a];
+}
+
+function renderQueue() {
+  document.getElementById('queueItems').innerHTML = QUEUE.map((v, i) => {
+    let cls = 'queue-chip';
+    if (i < queueIdx) cls += ' done';
+    else if (i === queueIdx) cls += ' current';
+    return `<span class="${cls}">${v}u</span>`;
+  }).join('');
+}
+
+function renderMemory() {
+  document.getElementById('memoryRow').innerHTML = blocks.map((b) => {
+    let cls = 'mem-block';
+    if (b.allocated !== null) cls += ' allocated';
+    return `<div class="${cls}">
+      <span class="size-label">${b.size}u</span>
+      ${b.allocated !== null ? `<span class="alloc-label">→ ${b.allocated}u</span>` : ''}
+      ${b.waste > 0 ? `<span class="waste-label">w: ${b.waste}</span>` : ''}
+    </div>`;
+  }).join('');
+  updateStats();
+}
+
+function flashBlock(idx) {
+  const cells = document.getElementById('memoryRow').children;
+  if (cells[idx]) {
+    cells[idx].classList.add('highlighted');
+    setTimeout(() => cells[idx].classList.remove('highlighted'), 800);
+  }
+}
+
+function updateStats() {
+  const used    = blocks.filter(b => b.allocated !== null).reduce((s,b) => s + b.allocated, 0);
+  const waste   = blocks.reduce((s,b) => s + b.waste, 0);
+  const total   = blocks.reduce((s,b) => s + b.size, 0);
+  const freeU   = total - used - waste;
+  const freeB   = blocks.filter(b => b.allocated === null).length;
+  const alloc   = blocks.filter(b => b.allocated !== null).length;
+  document.getElementById('statUsed').querySelector('.stat-val').textContent    = used;
+  document.getElementById('statFree').querySelector('.stat-val').textContent    = freeU;
+  document.getElementById('statBlocks').querySelector('.stat-val').textContent  = freeB;
+  document.getElementById('statWaste').querySelector('.stat-val').textContent   = waste;
+  document.getElementById('statAllocated').querySelector('.stat-val').textContent = alloc;
+}
+
+function addLog(msg, type='') {
+  const box = document.getElementById('logBox');
+  const d = document.createElement('div');
+  d.className = 'log-entry ' + type;
+  d.textContent = msg;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+
+function findBlock(size) {
+  const free = blocks.map((b,i) => ({...b,i})).filter(b => b.allocated === null && b.size >= size);
+  if (!free.length) return -1;
+  if (algo === 'first')  return free[0].i;
+  if (algo === 'best')   return free.sort((a,b) => a.size - b.size)[0].i;
+  if (algo === 'worst')  return free.sort((a,b) => b.size - a.size)[0].i;
+}
+
+function getDelay() {
+  const v = parseInt(document.getElementById('speedSlider').value);
+  return Math.max(120, 1300 - v * 120);
+}
+
+function stepOne() {
+  if (queueIdx >= QUEUE.length) { addLog('— Queue exhausted.', 'info'); return false; }
+  const req = QUEUE[queueIdx];
+  const idx = findBlock(req);
+  if (idx === -1) {
+    addLog(`✗  Request ${req}u — no suitable block found.`, 'fail');
+  } else {
+    const waste = blocks[idx].size - req;
+    blocks[idx].allocated = req;
+    blocks[idx].waste = waste;
+    addLog(`✓  Request ${req}u → Block ${idx} (${blocks[idx].size}u)${waste ? `  waste: ${waste}u` : ''}`, 'ok');
+    setTimeout(() => flashBlock(idx), 50);
+  }
+  queueIdx++;
+  renderQueue();
+  renderMemory();
+  return true;
+}
+
+async function allocateAll() {
+  if (allocating) return;
+  allocating = true;
+  while (queueIdx < QUEUE.length) {
+    stepOne();
+    await new Promise(r => setTimeout(r, getDelay()));
+  }
+  allocating = false;
+}
+
+function resetAll() {
+  allocating = false;
+  queueIdx = 0;
+  initBlocks();
+  document.getElementById('logBox').innerHTML = '<div class="log-entry info">— Simulator reset. Ready.</div>';
+  renderQueue();
+  renderMemory();
+}
+
+initBlocks();
+renderQueue();
+renderMemory();
+</script>
+</body>
+</html>
